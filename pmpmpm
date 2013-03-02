@@ -1,0 +1,82 @@
+#!/usr/bin/env perl
+# Perl Module Package Manager Package Maker
+# Copyright 2013 Eric Wilhelm
+
+use warnings;
+use strict;
+
+=head1 Assumptions
+
+fpm (with cpan.rb)
+cpanm ExtUtils::MakeMaker Module::Build CPAN::Meta::Spec
+
+  git clone https://github.com/ewilhelm/fpm.git
+  cd fpm
+  git checkout perl
+  # or gem build fpm.gemspec && gem install fpm-*.gem
+  export RUBYLIB=$PWD/lib; PATH=$PWD/bin:$PATH
+  cd ..
+
+  curl -L http://cpanmin.us | install /dev/stdin -m 755 .bin/cpanm
+  cpanm -l perl5 --mirror-only \
+    ExtUtils::MakeMaker Module::Build CPAN::Meta::Spec
+  export PERL5LIB=$PWD/perl5/lib/perl5
+
+Once we get to that point, running cpanm on any module will generate an
+unpacked dist with a MYMETA.json to feed metadata into fpm.  Caveat: fpm
+needs cpanm to have been run with --sudo because the paths change and
+we're using DEST_DIR.
+
+The Plan:
+
+  1. run --test-only with a disposable -l lib
+  2. get dist name, find dist in ~/.cpanm/latest-build
+  3. run cpanm --sudo --deplist on that, fpm it
+  4. read deps from MYMETA.json
+  5. descend: goto 2
+
+Not every dep will appear in the latest-build (e.g. already satisfied by
+the system or previously installed in lib.)  This probably means that
+you don't need the rpm for it.
+
+=cut
+
+
+
+# TODO options: perl / perl package / package prefix
+# TODO options: no-man-pages?
+
+my $CPANM = 'cpanm';
+
+
+sub packages_to_dists {
+  my $filename = $_[-1] =~ m{/} ? pop(@_) :
+    glob($ENV{HOME} . '/.cpanm/sources/*/02packages.details.txt');
+  my (@packages) = @_;
+
+  open(my $fh, '<', $filename) or die "open '$filename' failed: $!";
+
+  my %seeking = map {$_=>1} @packages; delete($seeking{perl});
+
+  my %got;
+  while(my $line = <$fh>) { last if $line eq "\n" }
+  while(my $line = <$fh>) { chomp($line);
+    my ($p, $v, $f) = split(/\s+/, $line, 3); $f or next;
+    delete($seeking{$p}) or next;
+    $got{$p} = ($f =~ m{.*/(.*?)-[^-]+$})[0];
+    last unless %seeking;
+  }
+
+  foreach my $k (keys %seeking) { # core deps...
+    die "invalid package name '$k'" if $k =~ m/[^a-z:_]/i;
+    system($^X, '-e', 'push(@INC, sub {exit 1}); require '.$k) and
+      die "must not be a core module / not in index?";
+    delete($seeking{$k});
+    $got{$k} = 'perl';
+  }
+
+  return %got;
+}
+
+
+# vim:ts=2:sw=2:et:sta
