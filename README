@@ -1,0 +1,15 @@
+#!/usr/bin/env perldoc
+
+=head1 NAME
+
+bin - some scripts
+
+=head1 AUTHOR
+
+Copyright 2013 Eric L. Wilhelm all rights reserved
+
+Please see each file for specific license terms.
+
+=cut
+
+# vim:ts=2:sw=2:et:sta
