@@ -5,6 +5,53 @@
 use warnings;
 use strict;
 
+=head1 NAME
+
+pmpmpm - Perl Module Package Manager Package Maker
+
+=head1 About
+
+This tool generates OS packages for a perl module distribution and each
+dist in the tree of its dependencies.
+
+=head1 Usage
+
+  pmpmpm [OPTIONS] Modu::leName
+
+=head1 Options
+
+=over
+
+=item --perl PATH
+
+Which perl to execute.
+
+DEFAULT: {$^X}
+
+=item --cpanm PATH
+
+Which cpanm command to run.
+
+DEFAULT: cpanm
+
+=item --fpm PATH
+
+Which fpm command to run.
+
+DEFAULT: fpm
+
+=item --package-format TYPE
+
+Format for output package - should be deb|rpm|pkg|etc.
+
+=item -h, --help
+
+=for help show this help message
+
+Show help about options.
+
+=back
+
 =head1 Assumptions
 
 fpm (with cpan.rb)
@@ -31,7 +78,7 @@ The Plan:
 
   1. run --test-only with a disposable -l lib
   2. get dist name, find dist in ~/.cpanm/latest-build
-  3. run cpanm --sudo --deplist on that, fpm it
+  3. run cpanm --sudo --showdeps on that, fpm it
   4. read deps from MYMETA.json
   5. descend: goto 2
 
@@ -43,16 +90,148 @@ you don't need the rpm for it.
 
 
 
-# TODO options: perl / perl package / package prefix
 # TODO options: no-man-pages?
 
-my $CPANM = 'cpanm';
+package bin::pmpmpm;
+
+use File::Fu;
+use Getopt::AsDocumented;
+use JSON::PP ();
 
 
+sub opts {
+  my ($args) = @_;
+  my $opt = Getopt::AsDocumented->process($args) or return;
+
+  # round-up the tools
+  foreach my $bit (qw(perl cpanm fpm)) {
+    my $x = $opt->$bit;
+    my $gotx = $x =~ m{/} ? File::Fu->file($x)->absolutely
+      : File::Fu->which($x);
+    die "'$x' not valid" unless $gotx->x;
+    $opt->{$bit} = $gotx;
+  }
+
+  $opt->{fpm_opts} = [sub { foreach my $i (0..$#$args) {
+    return splice(@$args, $i) if $args->[$i] =~ m/^-/
+  }; ()}->()];
+
+  return $opt;
+}
+
+my $_distdirs = sub {
+  my $dir = shift;
+  map { not($_->is_dir) ? () :
+    do { (my $n = $_->basename) =~ s{-[\d\.]+/+}{}; ($n => $_)}
+  } $dir->list
+};
+
+sub main {
+  my (@args) = @_;
+
+  my $opt = opts(\@args) or return;
+
+  $opt->package_format or
+    die "must have --package-format rpm|dep|pkg|etc";
+
+  my @mods = @args;
+  my %dirs = fetch_and_test($opt, @mods)->$_distdirs;
+
+  my %done = (perl => 1);
+  while(@mods) {
+    my %dists = packages_to_dists(@mods);
+    my %distmod = reverse %dists;
+    my @get = grep {not $done{$_}} keys %{{map {$_=>1} values %dists}}
+      or last;
+    @mods = ();
+    foreach my $d (@get) {
+      warn "$d\n";
+      my $dir = $dirs{$d} ? prep_dir($opt, $dirs{$d}) :
+        get_dist($opt, $d, $distmod{$d});
+      warn "pack $dir\n";
+      $done{$d} = pack_dir($opt, $dir);
+      push(@mods, read_deps($dir));
+    }
+  }
+}
+
+
+# just gets this prepared if it was run with --local-lib setup
+sub prep_dir {
+  my ($opt, $dir) = @_;
+
+  $dir->chdir_for(sub {
+    my $fh = $opt->cpanm->run('--quiet', '--sudo', '--showdeps', '.');
+    my @lines = <$fh>; # TODO check exit
+  });
+
+  return $dir;
+}
+
+sub get_dist {
+  my ($opt, $dist, $module) = @_;
+  my $fh = $opt->cpanm->run('--quiet', '--sudo', '--showdeps', $module);
+  my @lines = <$fh>; # TODO check exit
+
+  my %d = File::Fu->home->subdir('.cpanm/latest-build')->readlink
+    ->$_distdirs;
+  return($d{$dist} || die "fetching '$dist' failed");
+}
+
+sub pack_dir {
+  my ($opt, $dir) = @_;
+
+  my $fh = $opt->fpm->run('-s', 'cpan', '-t', $opt->package_format,
+    '--cpan-perl', $opt->perl,
+    @{$opt->{fpm_opts}},
+    $dir
+  );
+  my @data = <$fh>;
+  die "confusing fpm output: @data" if @data > 1;
+
+  my $d = $data[0];
+  die $d if $d =~ m/level=>:fatal/;
+  $d =~ m/:path=>"(.*)"/ or die "cannot get package filename in $d";
+  return($1);
+}
+
+sub read_deps {
+  my ($dir) = @_;
+
+  my $d = JSON::PP::decode_json(
+    scalar File::Fu->dir($dir)->file('MYMETA.json')->read);
+
+
+  my $r = $d->{prereqs}{runtime}{requires} or return();
+  return keys %$r;
+}
+
+sub fetch_and_test {
+  my ($opt, @mods) = @_;
+
+  my $scraplib = File::Fu->dir->temp_dir;
+  $opt->cpanm->run('--quiet', '--mirror-only',
+    # TODO will need --mirror option?
+    '--local-lib', $scraplib,
+    '--test-only', @mods,
+  );
+  # NOTE cpanm does 'print STDERR' so it's going to be difficult to deal
+  # with that without trapping it - also would need to deal with exit
+  # code (which will be automagic death if we aren't trying to readline
+  # its output.)
+
+  # TODO note that there is a race condition possible here
+  return File::Fu->home->subdir('.cpanm/latest-build')->readlink;
+}
+
+# TODO one-time read vs rescan?
 sub packages_to_dists {
-  my $filename = $_[-1] =~ m{/} ? pop(@_) :
-    glob($ENV{HOME} . '/.cpanm/sources/*/02packages.details.txt');
-  my (@packages) = @_;
+  my (@packages) = @_ or die "arguments missing";
+  my $filename = pop(@packages) if $packages[-1] =~ m{/};
+  $filename ||= glob(
+    $ENV{HOME} . '/.cpanm/sources/*/02packages.details.txt') ||
+    die "nothing there"; # XXX oddities of glob failure?
+  $filename or die "terrible bad things";
 
   open(my $fh, '<', $filename) or die "open '$filename' failed: $!";
 
@@ -67,16 +246,26 @@ sub packages_to_dists {
     last unless %seeking;
   }
 
-  foreach my $k (keys %seeking) { # core deps...
-    die "invalid package name '$k'" if $k =~ m/[^a-z:_]/i;
-    system($^X, '-e', 'push(@INC, sub {exit 1}); require '.$k) and
-      die "must not be a core module / not in index?";
-    delete($seeking{$k});
-    $got{$k} = 'perl';
-  }
+  # XXX thinking there's no reason for checking these here now
+  # foreach my $k (keys %seeking) { # core deps...
+  #   die "invalid package name '$k'" if $k =~ m/[^a-z:_]/i;
+  #   system($^X, '-e', 'push(@INC, sub {exit 1}); require '.$k) and
+  #     die "'$k' must not be a core module / not in index?";
+  #   delete($seeking{$k});
+  #   $got{$k} = 'perl';
+  # }
+
+  close($fh);
 
   return %got;
 }
 
+########################################################################
+package main;
 
-# vim:ts=2:sw=2:et:sta
+if($0 eq __FILE__) {
+  bin::pmpmpm::main(@ARGV);
+}
+
+# vi:ts=2:sw=2:et:sta
+my $package = 'bin::pmpmpm';
