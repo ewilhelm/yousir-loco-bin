@@ -153,6 +153,8 @@ sub main {
       push(@mods, read_deps($dir));
     }
   }
+  delete($done{perl});
+  print join("\n", map {$done{$_}} sort keys %done), "\n";
 }
 
 
@@ -187,7 +189,8 @@ sub pack_dir {
     $dir
   );
   my @data = <$fh>;
-  die "confusing fpm output: @data" if @data > 1;
+  # XXX bah Capture::Tiny or something
+  die "confusing fpm output: @data" if @data != 1;
 
   my $d = $data[0];
   die $d if $d =~ m/level=>:fatal/;
