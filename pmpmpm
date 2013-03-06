@@ -44,6 +44,12 @@ DEFAULT: fpm
 
 Format for output package - should be deb|rpm|pkg|etc.
 
+=item --man-pages
+
+Include generated manpages.
+
+Default: no
+
 =item -h, --help
 
 =for help show this help message
@@ -162,22 +168,28 @@ sub main {
 sub prep_dir {
   my ($opt, $dir) = @_;
 
-  $dir->chdir_for(sub {
-    my $fh = $opt->cpanm->run('--quiet', '--sudo', '--showdeps', '.');
-    my @lines = <$fh>; # TODO check exit
-  });
+  $dir->chdir_for(sub { do_prep($opt, '.') });
 
   return $dir;
 }
 
 sub get_dist {
   my ($opt, $dist, $module) = @_;
-  my $fh = $opt->cpanm->run('--quiet', '--sudo', '--showdeps', $module);
-  my @lines = <$fh>; # TODO check exit
+
+  do_prep($opt, $module);
 
   my %d = File::Fu->home->subdir('.cpanm/latest-build')->readlink
     ->$_distdirs;
   return($d{$dist} || die "fetching '$dist' failed");
+}
+
+sub do_prep {
+  my ($opt, $target) = @_;
+
+  my $fh = $opt->cpanm->run('--quiet', '--sudo',
+    $opt->man_pages ? () : '--no-man-pages',
+    '--showdeps', $target);
+  my @lines = <$fh>; # TODO check exit
 }
 
 sub pack_dir {
