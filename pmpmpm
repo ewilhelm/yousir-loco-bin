@@ -128,7 +128,7 @@ sub opts {
 my $_distdirs = sub {
   my $dir = shift;
   map { not($_->is_dir) ? () :
-    do { (my $n = $_->basename) =~ s{-[\d\.]+/+}{}; ($n => $_)}
+    do { (my $n = $_->basename) =~ s{-v?[\d\.]+/+}{}; ($n => $_)}
   } $dir->list
 };
 
