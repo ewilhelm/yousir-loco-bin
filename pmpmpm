@@ -44,6 +44,10 @@ DEFAULT: fpm
 
 Format for output package - should be deb|rpm|pkg|etc.
 
+=item --mirror URL
+
+Specify cpan mirror URL.
+
 =item --man-pages
 
 Include generated manpages.
@@ -187,6 +191,7 @@ sub do_prep {
   my ($opt, $target) = @_;
 
   my $fh = $opt->cpanm->run('--quiet', '--sudo',
+    $opt->mirror ? ('--mirror', $opt->mirror, '--mirror-only') : (),
     $opt->man_pages ? () : '--no-man-pages',
     '--showdeps', $target);
   my @lines = <$fh>; # TODO check exit
@@ -227,7 +232,7 @@ sub fetch_and_test {
 
   my $scraplib = File::Fu->dir->temp_dir;
   $opt->cpanm->run('--quiet', '--mirror-only',
-    # TODO will need --mirror option?
+    $opt->mirror ? ('--mirror', $opt->mirror) : (),
     '--local-lib', $scraplib,
     '--test-only', @mods,
   );
