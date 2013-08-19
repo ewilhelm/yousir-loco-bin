@@ -202,6 +202,7 @@ sub pack_dir {
 
   my $fh = $opt->fpm->run('-s', 'cpan', '-t', $opt->package_format,
     '--cpan-perl', $opt->perl,
+    $opt->man_pages ? () : '--no-cpan-man-pages',
     @{$opt->{fpm_opts}},
     $dir
   );
@@ -209,6 +210,7 @@ sub pack_dir {
   # XXX bah Capture::Tiny or something
   @data = grep {$_ !~ m/:message=>.*level=>:/} @data; # TODO WTF warnings
   die "confusing fpm output: @data" if @data != 1;
+  # TODO something more reasonable or parse the ruby hash?
 
   my $d = $data[0];
   die $d if $d =~ m/level=>:fatal/;
