@@ -203,7 +203,7 @@ sub get_dist {
 sub do_prep {
   my ($opt, $target) = @_;
 
-  my $fh = $opt->cpanm->run('--quiet', '--sudo',
+  my $fh = $opt->cpanm->run('--sudo', '--quiet',
     $opt->mirror ? ('--mirror', $opt->mirror, '--mirror-only') : (),
     $opt->man_pages ? () : '--no-man-pages',
     '--showdeps', $target);
@@ -245,7 +245,7 @@ sub read_deps {
 sub fetch_and_test {
   my ($opt, @mods) = @_;
 
-  $opt->cpanm->run('--quiet', '--mirror-only',
+  $opt->cpanm->run('--mirror-only', '--quiet',
     $opt->mirror ? ('--mirror', $opt->mirror) : (),
     '--local-lib', $opt->{scraplib},
     '--test-only', @mods,
