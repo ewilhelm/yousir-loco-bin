@@ -214,11 +214,11 @@ sub pack_dir {
   );
   my @data = <$fh>;
   # XXX bah Capture::Tiny or something
-  @data = grep {$_ !~ m/:message=>.*level=>:/} @data; # TODO WTF warnings
-  die "confusing fpm output: @data" if @data != 1;
+  my @msg = grep {$_ !~ m/:message=>.*level=>:/} @data; # TODO WTF warnings
+  die "confusing fpm output: @data" if @msg != 1;
   # TODO something more reasonable or parse the ruby hash?
 
-  my $d = $data[0];
+  my $d = $msg[0];
   die $d if $d =~ m/level=>:fatal/;
   $d =~ m/:path=>"(.*)"/ or die "cannot get package filename in $d";
   return($1);
