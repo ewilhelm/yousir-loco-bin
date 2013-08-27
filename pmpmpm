@@ -145,6 +145,13 @@ sub main {
     die "must have --package-format rpm|dep|pkg|etc";
 
   my @mods = @args;
+
+  # keep the scraplib through to the end
+  my $scraplib = File::Fu->dir->temp_dir;
+  $ENV{PERL5LIB} = $scraplib->absolutely->subdir('lib/perl5') .
+    ($ENV{PERL5LIB} ? ":$ENV{PERL5LIB}" : '');
+  $opt->{scraplib} = $scraplib;
+
   my %dirs = fetch_and_test($opt, @mods)->$_distdirs;
 
   my %done = (perl => 1);
@@ -238,10 +245,9 @@ sub read_deps {
 sub fetch_and_test {
   my ($opt, @mods) = @_;
 
-  my $scraplib = File::Fu->dir->temp_dir;
   $opt->cpanm->run('--quiet', '--mirror-only',
     $opt->mirror ? ('--mirror', $opt->mirror) : (),
-    '--local-lib', $scraplib,
+    '--local-lib', $opt->{scraplib},
     '--test-only', @mods,
   );
   # NOTE cpanm does 'print STDERR' so it's going to be difficult to deal
