@@ -172,7 +172,13 @@ sub main {
 sub prep_dir {
   my ($opt, $dir) = @_;
 
-  $dir->chdir_for(sub { do_prep($opt, '.') });
+  $dir->chdir_for(sub {
+    if(-f 'Makefile') { # XXX not needed, but
+      # cpanm says exit 0 when failed configure_requires
+      unlink('Makefile') or warn "could not unlink Makefile $!";
+    }
+    do_prep($opt, '.')
+  });
 
   return $dir;
 }
