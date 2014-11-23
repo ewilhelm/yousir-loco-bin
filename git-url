@@ -16,14 +16,21 @@ $url =~ s/\.git$//;
 $url =~ s{git@([^:]+):}{https://$1/};
 $url =~ s{/*$}{/};
 
-if(-d $arg) {
-  $url .= 'tree/master/' . $arg unless $arg eq '.';
-}
-elsif(-f $arg) {
-  $url .= 'blob/master/' . $arg;
+
+if($url =~ s#\.wiki#/wiki#) {
+  $arg =~ s/\.[^\.]+$//;
+  $url .= "$arg";
 }
 else {
-  $url .= 'commit/' . $arg;
+  if(-d $arg) {
+    $url .= 'tree/master/' . $arg unless $arg eq '.';
+  }
+  elsif(-f $arg) {
+    $url .= 'blob/master/' . $arg;
+  }
+  else {
+    $url .= 'commit/' . $arg;
+  }
 }
 
 print $url, "\n";
