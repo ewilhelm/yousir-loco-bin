@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# usage: push-sync DESTINATION DIR1 DIR2
+# NO TRAILING SLASHES
+
+dest=$1
+shift
+dirs=( "$@" )
+
+ while inotifywait -r -e attrib -e delete -e modify -e create \
+   --exclude '\..*\.swp$' ${dirs[*]} ; do \
+     rsync  -aLv --exclude '.*.swp' \
+     ${dirs[*]} $dest; sleep 2 || break; done
